@@ -1,0 +1,7 @@
+/out_dir/
+/out_figs/
+/out_dir_report/
+/config.json
+/product.json
+__pycache__/
+*.pyc
