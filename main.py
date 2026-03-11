@@ -111,6 +111,8 @@ if method not in valid_methods:
     create_product_json(report_items)
     sys.exit(1)
 
+evoked.apply_baseline((None, 0))
+
 try:
     stc = mne.minimum_norm.apply_inverse(
         evoked, inverse_operator, lambda2,
