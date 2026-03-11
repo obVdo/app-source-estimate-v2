@@ -316,6 +316,7 @@ if subject and subjects_dir:
             smoothing_steps=10,
             background='white',
             colormap='hot',
+            time_viewer=False,
         )
         brain.add_foci(
             vertno_max,
