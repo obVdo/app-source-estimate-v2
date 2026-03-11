@@ -293,8 +293,10 @@ if subject and subjects_dir:
 
         class _OffscreenRenderer(_PyVistaRenderer):
             _kind = 'pyvistaqt'
+            def show(self):
+                # Keep render_window alive for subsequent time-point renders
+                self.figure.plotter.show(auto_close=False)
             def __getattr__(self, name):
-                # Stub out all Qt window/dock/interaction methods
                 if name.startswith(('_window_', '_dock_', '_enable_', '_disable_')):
                     return lambda *a, **kw: None
                 raise AttributeError(name)
