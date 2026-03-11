@@ -324,7 +324,7 @@ if subject and subjects_dir:
             brain.add_text(
                 0.1, 0.9,
                 f'{method} ({_hemi}) — peak at {_tmax * 1000:.0f} ms',
-                'title', font_size=14,
+                'title', font_size=10,
             )
             _fig_path = os.path.join('out_figs', f'brain_{_hemi}.png')
             brain.save_image(_fig_path)
