@@ -337,18 +337,19 @@ if subject and subjects_dir:
             brain.close()
         except Exception:
             pass
-        add_image_to_product(
-            report_items,
-            f'Brain lateral (peak at {time_max * 1000:.0f} ms)',
-            filepath=fig_path,
-        )
+        _brain_fig_path = fig_path  # pass to report below
     except Exception as e:
+        _brain_fig_path = None
         add_info_to_product(
             report_items, f"Could not render brain surface plot: {e}", "warning"
         )
+else:
+    _brain_fig_path = None
 
 # == SAVE REPORT ==
 report = mne.Report(title='Source Estimate Report')
+if _brain_fig_path:
+    report.add_image(_brain_fig_path, title=f'Brain lateral (peak at {time_max * 1000:.0f} ms)')
 report.save(os.path.join('out_report', 'report.html'), overwrite=True)
 
 add_info_to_product(report_items, "Source estimation completed successfully.", "success")
