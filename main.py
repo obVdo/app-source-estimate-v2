@@ -308,10 +308,10 @@ if subject and subjects_dir:
             brain = stc.plot(
                 hemi=_hemi,
                 subjects_dir=subjects_dir,
-                views='lateral',
+                views=['lateral', 'medial'],
                 initial_time=_tmax,
                 time_unit='s',
-                size=(400, 400),
+                size=(800, 400),
                 smoothing_steps=10,
                 background='white',
                 colormap='hot',
