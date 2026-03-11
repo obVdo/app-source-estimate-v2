@@ -348,7 +348,13 @@ else:
 
 # == SAVE REPORT ==
 report = mne.Report(title='Source Estimate Report')
-if _brain_fig_path:
+evoked_fig = os.path.join('out_figs', 'evoked_butterfly.png')
+stc_fig    = os.path.join('out_figs', 'source_time_course.png')
+if os.path.isfile(evoked_fig):
+    report.add_image(evoked_fig, title='Evoked Response')
+if os.path.isfile(stc_fig):
+    report.add_image(stc_fig, title=f'Source Time Course ({method})')
+if _brain_fig_path and os.path.isfile(_brain_fig_path):
     report.add_image(_brain_fig_path, title=f'Brain lateral (peak at {time_max * 1000:.0f} ms)')
 report.save(os.path.join('out_report', 'index.html'), overwrite=True)
 
