@@ -304,13 +304,10 @@ if subject and subjects_dir:
         renderer_mod.backend._Renderer = _OffscreenRenderer
 
         vertno_max, time_max = stc.get_peak(hemi='rh', tmin=0)
-        _abs = np.abs(stc.data)
-        _lims = [np.percentile(_abs, 50), np.percentile(_abs, 75), np.percentile(_abs, 95)]
 
         brain = stc.plot(
             hemi='rh',
             subjects_dir=subjects_dir,
-            clim=dict(kind='value', lims=_lims),
             views='lateral',
             initial_time=time_max,
             time_unit='s',
@@ -358,18 +355,11 @@ if os.path.isfile(stc_fig):
     report.add_image(stc_fig, title=f'Source Time Course ({method})')
 if subject and subjects_dir:
     try:
-        import numpy as np
-        _abs = np.abs(stc.data)
-        _lims = [np.percentile(_abs, 50), np.percentile(_abs, 75), np.percentile(_abs, 95)]
         report.add_stc(
             stc, title=f'Source Estimate ({method})',
             subject=subject, subjects_dir=subjects_dir,
             n_time_points=20,
-            stc_plot_kwargs=dict(
-                clim=dict(kind='value', lims=_lims),
-                colormap='hot',
-                time_viewer=False,
-            ),
+            stc_plot_kwargs=dict(time_viewer=False),
         )
     except Exception as e:
         add_info_to_product(report_items, f"Could not add STC to report: {e}", "warning")
