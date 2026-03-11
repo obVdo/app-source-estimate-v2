@@ -9,6 +9,11 @@ Outputs: source_estimate-stc files, source_estimate_fsaverage-stc (morphed).
 import os
 import sys
 
+# Must be set before any vtk/pyvista/mne.viz import
+os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+os.environ.setdefault('VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN', '1')
+os.environ.setdefault('MPLBACKEND', 'Agg')
+
 # Resolve brainlife_utils — try local copy first, then parent monorepo
 app_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(app_dir)
@@ -247,45 +252,39 @@ except Exception:
     except Exception as e:
         add_info_to_product(report_items, f"Could not get peak: {e}", "warning")
 
-# Brain surface plot (requires pyvistaqt + xvfb)
+# Brain surface plot (offscreen via QT_QPA_PLATFORM=offscreen + monkey-patch)
 if subject and subjects_dir:
     try:
         import numpy as np
+        from qtpy.QtWidgets import QApplication
+        _qapp = QApplication.instance() or QApplication(sys.argv)
+
         import pyvista as pv
         pv.OFF_SCREEN = True
         mne.viz.set_3d_backend('pyvistaqt')
 
-        # Monkey-patch: replace Qt BackgroundPlotter with offscreen pyvista.Plotter
         from mne.viz.backends._pyvista import (
-            PyVistaFigure, Plotter as PVPlotter,
-            _PyVistaRenderer, _ALL_PLOTTERS,
+            PyVistaFigure, Plotter as PVPlotter, _PyVistaRenderer, _ALL_PLOTTERS,
         )
         import mne.viz.backends.renderer as renderer_mod
 
-        _orig_build = PyVistaFigure._build
-
         def _patched_build(self):
-            if self.store.get('off_screen', False):
-                if self._plotter is None:
-                    store_filtered = {
-                        k: v for k, v in self.store.items()
-                        if k in ('window_size', 'shape', 'off_screen',
-                                 'border', 'multi_samples')
-                    }
-                    plotter = PVPlotter(**store_filtered)
-                    plotter.background_color = self.background_color
-                    self._plotter = plotter
-                    try:
-                        _ALL_PLOTTERS[plotter._id_name] = plotter
-                    except AttributeError:
-                        pass
-                if self.plotter.iren is not None:
-                    self.plotter.iren.initialize()
-                    def safe_update(stime=1, force_redraw=True):
-                        self.plotter.render()
-                    self.plotter.update = safe_update
-                return self.plotter
-            return _orig_build(self)
+            if self._plotter is None:
+                store_filtered = {k: v for k, v in self.store.items()
+                                  if k in ('window_size', 'shape', 'border', 'multi_samples')}
+                plotter = PVPlotter(off_screen=True, **store_filtered)
+                plotter.background_color = self.background_color
+                self._plotter = plotter
+                try:
+                    _ALL_PLOTTERS[plotter._id_name] = plotter
+                except AttributeError:
+                    pass
+            if self.plotter.iren is not None:
+                self.plotter.iren.initialize()
+                def safe_update(stime=1, force_redraw=True):
+                    self.plotter.render()
+                self.plotter.update = safe_update
+            return self.plotter
 
         PyVistaFigure._build = _patched_build
 
@@ -299,7 +298,6 @@ if subject and subjects_dir:
         renderer_mod.backend._Renderer = _OffscreenRenderer
 
         vertno_max, time_max = stc.get_peak(hemi='rh')
-        # Data-driven colormap limits: 50th / 75th / 95th percentile
         _abs = np.abs(stc.data)
         _lims = [np.percentile(_abs, 50), np.percentile(_abs, 75), np.percentile(_abs, 95)]
 
