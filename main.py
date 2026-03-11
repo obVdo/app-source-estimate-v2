@@ -174,6 +174,9 @@ if morph_to_fsaverage and subject and subjects_dir:
         stc_morphed = stc
     else:
         try:
+            # Ensure fsaverage is available in subjects_dir
+            if not os.path.isdir(os.path.join(subjects_dir, 'fsaverage')):
+                mne.datasets.fetch_fsaverage(subjects_dir=subjects_dir, verbose=True)
             morph = mne.compute_source_morph(
                 stc, subject_from=subject,
                 subject_to='fsaverage',
@@ -294,6 +297,7 @@ if subject and subjects_dir:
             def _window_close_connect(self, func, *, after=True): pass
             def _window_close_disconnect(self, func): pass
             def _window_set_theme(self, theme): pass
+            def _dock_initialize(self, **kwargs): pass
 
         renderer_mod.backend._Renderer = _OffscreenRenderer
 
