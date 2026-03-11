@@ -208,7 +208,7 @@ elif morph_to_fsaverage:
 try:
     fig_evoked = evoked.plot(show=False, spatial_colors=True)
     fig_path = os.path.join('out_figs', 'evoked_butterfly.png')
-    fig_evoked.savefig(fig_path, dpi=150, bbox_inches='tight')
+    fig_evoked.savefig(fig_path, dpi=72, bbox_inches='tight')
     plt.close(fig_evoked)
     add_image_to_product(report_items, 'Evoked Response', filepath=fig_path)
 except Exception as e:
@@ -229,7 +229,7 @@ try:
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
     fig_path = os.path.join('out_figs', 'source_time_course.png')
-    plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+    plt.savefig(fig_path, dpi=72, bbox_inches='tight')
     plt.close(fig_stc)
     add_image_to_product(report_items, 'Source Time Course', filepath=fig_path)
 except Exception as e:
@@ -311,7 +311,7 @@ if subject and subjects_dir:
                 views='lateral',
                 initial_time=_tmax,
                 time_unit='s',
-                size=(800, 800),
+                size=(400, 400),
                 smoothing_steps=10,
                 background='white',
                 colormap='hot',
