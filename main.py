@@ -350,7 +350,7 @@ else:
 report = mne.Report(title='Source Estimate Report')
 if _brain_fig_path:
     report.add_image(_brain_fig_path, title=f'Brain lateral (peak at {time_max * 1000:.0f} ms)')
-report.save(os.path.join('out_report', 'report.html'), overwrite=True)
+report.save(os.path.join('out_report', 'index.html'), overwrite=True)
 
 add_info_to_product(report_items, "Source estimation completed successfully.", "success")
 create_product_json(report_items)
