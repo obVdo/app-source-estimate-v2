@@ -362,7 +362,7 @@ if subject and subjects_dir:
         )
     except Exception as e:
         add_info_to_product(report_items, f"Could not add STC to report: {e}", "warning")
-report.save(os.path.join('out_report', 'index.html'), overwrite=True)
+report.save(os.path.join('out_report', 'report.html'), overwrite=True)
 
 add_info_to_product(report_items, "Source estimation completed successfully.", "success")
 create_product_json(report_items)
