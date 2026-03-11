@@ -293,11 +293,11 @@ if subject and subjects_dir:
 
         class _OffscreenRenderer(_PyVistaRenderer):
             _kind = 'pyvistaqt'
-            def _window_initialize(self, **kwargs): pass
-            def _window_close_connect(self, func, *, after=True): pass
-            def _window_close_disconnect(self, func): pass
-            def _window_set_theme(self, theme): pass
-            def _dock_initialize(self, **kwargs): pass
+            def __getattr__(self, name):
+                # Stub out all Qt window/dock/interaction methods
+                if name.startswith(('_window_', '_dock_', '_enable_', '_disable_')):
+                    return lambda *a, **kw: None
+                raise AttributeError(name)
 
         renderer_mod.backend._Renderer = _OffscreenRenderer
 
