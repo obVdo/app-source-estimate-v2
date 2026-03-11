@@ -163,7 +163,7 @@ if fs_path and os.path.isdir(fs_path):
                 subjects_dir = subjects_dir or fs_path
                 subject = subject or _subdirs[0]
 
-morph_to_fsaverage = config.get('morph_to_fsaverage', True)
+morph_to_fsaverage = config.get('morph_to_fsaverage', False)
 stc_morphed = None
 
 if morph_to_fsaverage and subject and subjects_dir:
