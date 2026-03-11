@@ -238,7 +238,7 @@ except Exception as e:
 # Peak info
 try:
     for hemi in ('lh', 'rh'):
-        peak_vert, peak_time = stc.get_peak(hemi=hemi)
+        peak_vert, peak_time = stc.get_peak(hemi=hemi, tmin=0)
         add_info_to_product(
             report_items,
             f"Peak ({hemi}): vertex {peak_vert} at {peak_time * 1000:.1f} ms",
@@ -246,7 +246,7 @@ try:
         )
 except Exception:
     try:
-        peak_vert, peak_time = stc.get_peak()
+        peak_vert, peak_time = stc.get_peak(tmin=0)
         add_info_to_product(
             report_items,
             f"Peak: vertex {peak_vert} at {peak_time * 1000:.1f} ms",
@@ -301,7 +301,7 @@ if subject and subjects_dir:
 
         renderer_mod.backend._Renderer = _OffscreenRenderer
 
-        vertno_max, time_max = stc.get_peak(hemi='rh')
+        vertno_max, time_max = stc.get_peak(hemi='rh', tmin=0)
         _abs = np.abs(stc.data)
         _lims = [np.percentile(_abs, 50), np.percentile(_abs, 75), np.percentile(_abs, 95)]
 
