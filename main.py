@@ -354,7 +354,16 @@ if os.path.isfile(evoked_fig):
     report.add_image(evoked_fig, title='Evoked Response')
 if os.path.isfile(stc_fig):
     report.add_image(stc_fig, title=f'Source Time Course ({method})')
-if _brain_fig_path and os.path.isfile(_brain_fig_path):
+if subject and subjects_dir:
+    try:
+        report.add_stc(
+            stc, title=f'Source Estimate ({method})',
+            subject=subject, subjects_dir=subjects_dir,
+            n_time_points=20,
+        )
+    except Exception as e:
+        add_info_to_product(report_items, f"Could not add STC to report: {e}", "warning")
+elif _brain_fig_path and os.path.isfile(_brain_fig_path):
     report.add_image(_brain_fig_path, title=f'Brain lateral (peak at {time_max * 1000:.0f} ms)')
 report.save(os.path.join('out_report', 'index.html'), overwrite=True)
 
