@@ -303,47 +303,46 @@ if subject and subjects_dir:
 
         renderer_mod.backend._Renderer = _OffscreenRenderer
 
-        vertno_max, time_max = stc.get_peak(hemi='rh', tmin=0)
-
-        brain = stc.plot(
-            hemi='rh',
-            subjects_dir=subjects_dir,
-            views='lateral',
-            initial_time=time_max,
-            time_unit='s',
-            size=(800, 800),
-            smoothing_steps=10,
-            background='white',
-            colormap='hot',
-            time_viewer=False,
-        )
-        brain.add_foci(
-            vertno_max,
-            coords_as_verts=True,
-            hemi='rh',
-            color='blue',
-            scale_factor=0.6,
-            alpha=0.5,
-        )
-        brain.add_text(
-            0.1, 0.9,
-            f'{method} — peak at {time_max * 1000:.0f} ms',
-            'title', font_size=14,
-        )
-        fig_path = os.path.join('out_figs', 'brain_lateral.png')
-        brain.save_image(fig_path)
-        try:
-            brain.close()
-        except Exception:
-            pass
-        _brain_fig_path = fig_path  # pass to report below
+        for _hemi in ('lh', 'rh'):
+            _vert, _tmax = stc.get_peak(hemi=_hemi, tmin=0)
+            brain = stc.plot(
+                hemi=_hemi,
+                subjects_dir=subjects_dir,
+                views='lateral',
+                initial_time=_tmax,
+                time_unit='s',
+                size=(800, 800),
+                smoothing_steps=10,
+                background='white',
+                colormap='hot',
+                time_viewer=False,
+            )
+            brain.add_foci(
+                _vert, coords_as_verts=True, hemi=_hemi,
+                color='blue', scale_factor=0.6, alpha=0.5,
+            )
+            brain.add_text(
+                0.1, 0.9,
+                f'{method} ({_hemi}) — peak at {_tmax * 1000:.0f} ms',
+                'title', font_size=14,
+            )
+            _fig_path = os.path.join('out_figs', f'brain_{_hemi}.png')
+            brain.save_image(_fig_path)
+            try:
+                brain.close()
+            except Exception:
+                pass
+            add_image_to_product(
+                report_items,
+                f'Brain {_hemi} (peak at {_tmax * 1000:.0f} ms)',
+                filepath=_fig_path,
+            )
     except Exception as e:
-        _brain_fig_path = None
         add_info_to_product(
             report_items, f"Could not render brain surface plot: {e}", "warning"
         )
 else:
-    _brain_fig_path = None
+    pass
 
 # == SAVE REPORT ==
 report = mne.Report(title='Source Estimate Report')
@@ -363,8 +362,6 @@ if subject and subjects_dir:
         )
     except Exception as e:
         add_info_to_product(report_items, f"Could not add STC to report: {e}", "warning")
-elif _brain_fig_path and os.path.isfile(_brain_fig_path):
-    report.add_image(_brain_fig_path, title=f'Brain lateral (peak at {time_max * 1000:.0f} ms)')
 report.save(os.path.join('out_report', 'index.html'), overwrite=True)
 
 add_info_to_product(report_items, "Source estimation completed successfully.", "success")
