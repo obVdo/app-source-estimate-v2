@@ -97,7 +97,8 @@ except Exception as e:
 # == APPLY INVERSE ==
 method   = config.get('method') or 'dSPM'
 snr      = float(config.get('snr') or 3.0)
-pick_ori = config.get('pick_ori') or None
+_pick_ori = config.get('pick_ori')
+pick_ori  = None if _pick_ori in (None, '', 'None') else _pick_ori
 lambda2  = 1.0 / snr ** 2
 
 valid_methods = ('MNE', 'dSPM', 'sLORETA', 'eLORETA')
