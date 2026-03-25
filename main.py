@@ -9,6 +9,11 @@ Outputs: source_estimate-stc files, source_estimate_fsaverage-stc (morphed).
 import os
 import sys
 
+# Must be set before any vtk/pyvista/mne.viz import
+os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+os.environ.setdefault('VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN', '1')
+os.environ.setdefault('MPLBACKEND', 'Agg')
+
 # Resolve brainlife_utils — try local copy first, then parent monorepo
 app_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(app_dir)
@@ -111,6 +116,10 @@ if method not in valid_methods:
     create_product_json(report_items)
     sys.exit(1)
 
+# EEG average reference projector is required for apply_inverse
+if any(ch['kind'] == mne.io.constants.FIFF.FIFFV_EEG_CH for ch in evoked.info['chs']):
+    evoked.set_eeg_reference(projection=True)
+
 evoked.apply_baseline((None, 0))
 
 try:
@@ -158,7 +167,7 @@ if fs_path and os.path.isdir(fs_path):
                 subjects_dir = subjects_dir or fs_path
                 subject = subject or _subdirs[0]
 
-morph_to_fsaverage = config.get('morph_to_fsaverage', True)
+morph_to_fsaverage = config.get('morph_to_fsaverage', False)
 stc_morphed = None
 
 if morph_to_fsaverage and subject and subjects_dir:
@@ -169,6 +178,9 @@ if morph_to_fsaverage and subject and subjects_dir:
         stc_morphed = stc
     else:
         try:
+            # Ensure fsaverage is available in subjects_dir
+            if not os.path.isdir(os.path.join(subjects_dir, 'fsaverage')):
+                mne.datasets.fetch_fsaverage(subjects_dir=subjects_dir, verbose=True)
             morph = mne.compute_source_morph(
                 stc, subject_from=subject,
                 subject_to='fsaverage',
@@ -200,7 +212,7 @@ elif morph_to_fsaverage:
 try:
     fig_evoked = evoked.plot(show=False, spatial_colors=True)
     fig_path = os.path.join('out_figs', 'evoked_butterfly.png')
-    fig_evoked.savefig(fig_path, dpi=150, bbox_inches='tight')
+    fig_evoked.savefig(fig_path, dpi=72, bbox_inches='tight')
     plt.close(fig_evoked)
     add_image_to_product(report_items, 'Evoked Response', filepath=fig_path)
 except Exception as e:
@@ -221,7 +233,7 @@ try:
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
     fig_path = os.path.join('out_figs', 'source_time_course.png')
-    plt.savefig(fig_path, dpi=150, bbox_inches='tight')
+    plt.savefig(fig_path, dpi=72, bbox_inches='tight')
     plt.close(fig_stc)
     add_image_to_product(report_items, 'Source Time Course', filepath=fig_path)
 except Exception as e:
@@ -230,7 +242,7 @@ except Exception as e:
 # Peak info
 try:
     for hemi in ('lh', 'rh'):
-        peak_vert, peak_time = stc.get_peak(hemi=hemi)
+        peak_vert, peak_time = stc.get_peak(hemi=hemi, tmin=0)
         add_info_to_product(
             report_items,
             f"Peak ({hemi}): vertex {peak_vert} at {peak_time * 1000:.1f} ms",
@@ -238,7 +250,7 @@ try:
         )
 except Exception:
     try:
-        peak_vert, peak_time = stc.get_peak()
+        peak_vert, peak_time = stc.get_peak(tmin=0)
         add_info_to_product(
             report_items,
             f"Peak: vertex {peak_vert} at {peak_time * 1000:.1f} ms",
@@ -247,105 +259,113 @@ except Exception:
     except Exception as e:
         add_info_to_product(report_items, f"Could not get peak: {e}", "warning")
 
-# Brain surface plot (requires pyvistaqt + xvfb)
+# Brain surface plot (offscreen via QT_QPA_PLATFORM=offscreen + monkey-patch)
 if subject and subjects_dir:
     try:
         import numpy as np
+        from qtpy.QtWidgets import QApplication
+        _qapp = QApplication.instance() or QApplication(sys.argv)
+
         import pyvista as pv
         pv.OFF_SCREEN = True
         mne.viz.set_3d_backend('pyvistaqt')
 
-        # Monkey-patch: replace Qt BackgroundPlotter with offscreen pyvista.Plotter
         from mne.viz.backends._pyvista import (
-            PyVistaFigure, Plotter as PVPlotter,
-            _PyVistaRenderer, _ALL_PLOTTERS,
+            PyVistaFigure, Plotter as PVPlotter, _PyVistaRenderer, _ALL_PLOTTERS,
         )
         import mne.viz.backends.renderer as renderer_mod
 
-        _orig_build = PyVistaFigure._build
-
         def _patched_build(self):
-            if self.store.get('off_screen', False):
-                if self._plotter is None:
-                    store_filtered = {
-                        k: v for k, v in self.store.items()
-                        if k in ('window_size', 'shape', 'off_screen',
-                                 'border', 'multi_samples')
-                    }
-                    plotter = PVPlotter(**store_filtered)
-                    plotter.background_color = self.background_color
-                    self._plotter = plotter
-                    try:
-                        _ALL_PLOTTERS[plotter._id_name] = plotter
-                    except AttributeError:
-                        pass
-                if self.plotter.iren is not None:
-                    self.plotter.iren.initialize()
-                    def safe_update(stime=1, force_redraw=True):
-                        self.plotter.render()
-                    self.plotter.update = safe_update
-                return self.plotter
-            return _orig_build(self)
+            if self._plotter is None:
+                store_filtered = {k: v for k, v in self.store.items()
+                                  if k in ('window_size', 'shape', 'border', 'multi_samples')}
+                plotter = PVPlotter(off_screen=True, **store_filtered)
+                plotter.background_color = self.background_color
+                self._plotter = plotter
+                try:
+                    _ALL_PLOTTERS[plotter._id_name] = plotter
+                except AttributeError:
+                    pass
+            if self.plotter.iren is not None:
+                self.plotter.iren.initialize()
+                def safe_update(stime=1, force_redraw=True):
+                    self.plotter.render()
+                self.plotter.update = safe_update
+            return self.plotter
 
         PyVistaFigure._build = _patched_build
 
         class _OffscreenRenderer(_PyVistaRenderer):
             _kind = 'pyvistaqt'
-            def _window_initialize(self, **kwargs): pass
-            def _window_close_connect(self, func, *, after=True): pass
-            def _window_close_disconnect(self, func): pass
-            def _window_set_theme(self, theme): pass
+            def show(self):
+                # Keep render_window alive for subsequent time-point renders
+                self.figure.plotter.show(auto_close=False)
+            def __getattr__(self, name):
+                if name.startswith(('_window_', '_dock_', '_enable_', '_disable_')):
+                    return lambda *a, **kw: None
+                raise AttributeError(name)
 
         renderer_mod.backend._Renderer = _OffscreenRenderer
 
-        vertno_max, time_max = stc.get_peak(hemi='rh')
-        # Data-driven colormap limits: 50th / 75th / 95th percentile
-        _abs = np.abs(stc.data)
-        _lims = [np.percentile(_abs, 50), np.percentile(_abs, 75), np.percentile(_abs, 95)]
-
-        brain = stc.plot(
-            hemi='rh',
-            subjects_dir=subjects_dir,
-            clim=dict(kind='value', lims=_lims),
-            views='lateral',
-            initial_time=time_max,
-            time_unit='s',
-            size=(800, 800),
-            smoothing_steps=10,
-            background='white',
-            colormap='hot',
-        )
-        brain.add_foci(
-            vertno_max,
-            coords_as_verts=True,
-            hemi='rh',
-            color='blue',
-            scale_factor=0.6,
-            alpha=0.5,
-        )
-        brain.add_text(
-            0.1, 0.9,
-            f'{method} — peak at {time_max * 1000:.0f} ms',
-            'title', font_size=14,
-        )
-        fig_path = os.path.join('out_figs', 'brain_lateral.png')
-        brain.save_image(fig_path)
-        try:
-            brain.close()
-        except Exception:
-            pass
-        add_image_to_product(
-            report_items,
-            f'Brain lateral (peak at {time_max * 1000:.0f} ms)',
-            filepath=fig_path,
-        )
+        for _hemi in ('lh', 'rh'):
+            _vert, _tmax = stc.get_peak(hemi=_hemi, tmin=0)
+            brain = stc.plot(
+                hemi=_hemi,
+                subjects_dir=subjects_dir,
+                views=['lateral', 'medial'],
+                initial_time=_tmax,
+                time_unit='s',
+                size=(800, 400),
+                smoothing_steps=10,
+                background='white',
+                colormap='hot',
+                time_viewer=False,
+            )
+            brain.add_foci(
+                _vert, coords_as_verts=True, hemi=_hemi,
+                color='blue', scale_factor=0.6, alpha=0.5,
+            )
+            brain.add_text(
+                0.1, 0.9,
+                f'{method} ({_hemi}) — peak at {_tmax * 1000:.0f} ms',
+                'title', font_size=10,
+            )
+            _fig_path = os.path.join('out_figs', f'brain_{_hemi}.png')
+            brain.save_image(_fig_path)
+            try:
+                brain.close()
+            except Exception:
+                pass
+            add_image_to_product(
+                report_items,
+                f'Brain {_hemi} (peak at {_tmax * 1000:.0f} ms)',
+                filepath=_fig_path,
+            )
     except Exception as e:
         add_info_to_product(
             report_items, f"Could not render brain surface plot: {e}", "warning"
         )
+else:
+    pass
 
 # == SAVE REPORT ==
 report = mne.Report(title='Source Estimate Report')
+evoked_fig = os.path.join('out_figs', 'evoked_butterfly.png')
+stc_fig    = os.path.join('out_figs', 'source_time_course.png')
+if os.path.isfile(evoked_fig):
+    report.add_image(evoked_fig, title='Evoked Response')
+if os.path.isfile(stc_fig):
+    report.add_image(stc_fig, title=f'Source Time Course ({method})')
+if subject and subjects_dir:
+    try:
+        report.add_stc(
+            stc, title=f'Source Estimate ({method})',
+            subject=subject, subjects_dir=subjects_dir,
+            n_time_points=20,
+            stc_plot_kwargs=dict(time_viewer=False),
+        )
+    except Exception as e:
+        add_info_to_product(report_items, f"Could not add STC to report: {e}", "warning")
 report.save(os.path.join('out_report', 'report.html'), overwrite=True)
 
 add_info_to_product(report_items, "Source estimation completed successfully.", "success")
