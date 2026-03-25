@@ -116,6 +116,10 @@ if method not in valid_methods:
     create_product_json(report_items)
     sys.exit(1)
 
+# EEG average reference projector is required for apply_inverse
+if any(ch['kind'] == mne.io.constants.FIFF.FIFFV_EEG_CH for ch in evoked.info['chs']):
+    evoked.set_eeg_reference(projection=True)
+
 evoked.apply_baseline((None, 0))
 
 try:
