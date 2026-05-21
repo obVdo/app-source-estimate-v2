@@ -132,6 +132,14 @@ _pick_ori = config.get('pick_ori')
 pick_ori  = None if _pick_ori in (None, '', 'None') else _pick_ori
 lambda2   = 1.0 / snr ** 2
 
+def _parse_time(val):
+    if val in (None, '', 'None'):
+        return None
+    return float(val)
+
+crop_tmin = _parse_time(config.get('tmin'))
+crop_tmax = _parse_time(config.get('tmax'))
+
 valid_methods = ('MNE', 'dSPM', 'sLORETA', 'eLORETA')
 if method not in valid_methods:
     add_info_to_product(
@@ -142,11 +150,16 @@ if method not in valid_methods:
     create_product_json(report_items)
     sys.exit(1)
 
-# EEG average reference + baseline for all evokeds
+# EEG average reference + baseline + optional crop for all evokeds
 for ev in evoked_list:
     if any(ch['kind'] == mne.io.constants.FIFF.FIFFV_EEG_CH for ch in ev.info['chs']):
         ev.set_eeg_reference(projection=True)
     ev.apply_baseline((None, 0))
+    if crop_tmin is not None or crop_tmax is not None:
+        ev.crop(tmin=crop_tmin, tmax=crop_tmax)
+        add_info_to_product(report_items,
+                            f"Cropped [{ev.comment}] to [{crop_tmin}, {crop_tmax}] s "
+                            f"→ {len(ev.times)} time points", "info")
 
 # == MORPH SETUP ==
 fs_path      = config.get('freesurfer') or config.get('output') or None
