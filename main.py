@@ -74,7 +74,21 @@ except Exception as e:
 
 # == LOAD SENSOR DATA ==
 epochs_file = config.get('epo') or config.get('epochs') or None
-evoked_file = config.get('evoked') or None
+# Resolve evoked file — try config path first, then common alternative filenames
+# in the same directory (evokeds_ave.fif, ave.fif) to handle different evoked apps.
+_evoked_raw = config.get('evoked') or None
+evoked_file = None
+if _evoked_raw:
+    _candidates = [_evoked_raw]
+    _evoked_dir = os.path.dirname(_evoked_raw)
+    for _alt in ('evokeds_ave.fif', 'ave.fif', 'evoked-ave.fif'):
+        _candidate = os.path.join(_evoked_dir, _alt)
+        if _candidate not in _candidates:
+            _candidates.append(_candidate)
+    for _c in _candidates:
+        if os.path.isfile(_c):
+            evoked_file = _c
+            break
 
 evoked_list = []
 try:
