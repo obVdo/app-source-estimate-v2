@@ -264,33 +264,51 @@ try:
 except Exception as e:
     add_info_to_product(report_items, f"Could not plot evoked: {e}", "warning")
 
-# Source time course — LH and RH separately, all conditions overlaid
+# Source time course — one figure per condition, LH + RH side by side
 def _hemi_tc(stc, hemi):
     n_lh = len(stc.vertices[0])
     return stc.data[:n_lh].mean(axis=0) if hemi == 'lh' else stc.data[n_lh:].mean(axis=0)
 
+tc_fig_paths = {}  # label → saved png path
 try:
-    _colors = plt.cm.tab20.colors
-    for _hl in ('lh', 'rh'):
-        fig_tc, ax_tc = plt.subplots(figsize=(10, 4))
-        for i, (label, stc, _) in enumerate(stc_list):
-            ax_tc.plot(stc.times * 1000, _hemi_tc(stc, _hl),
-                       lw=1.5, color=_colors[i % len(_colors)], label=label)
-        if len(stc_list) > 1:
-            ax_tc.plot(stc_ga.times * 1000, _hemi_tc(stc_ga, _hl),
-                       lw=2.5, color='black', label='grand avg')
-        ax_tc.axhline(0, color='k', lw=0.5)
-        ax_tc.axvline(0, color='k', lw=0.5, ls='--')
-        ax_tc.set_xlabel('Time (ms)')
-        ax_tc.set_ylabel(f'Source amplitude ({method})')
-        ax_tc.set_title(f'Source Time Course {_hl.upper()} — {method}  ({len(stc_list)} condition(s))')
-        ax_tc.grid(True, alpha=0.3)
-        ax_tc.legend(fontsize=7, ncol=4)
+    for label, stc, _ in stc_list:
+        fig_tc, axes_tc = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
+        fig_tc.suptitle(f'Source Time Course — {label}  ({method})', fontsize=10)
+        for ax_tc, _hl, _htitle in zip(axes_tc, ('lh', 'rh'),
+                                       ('Left Hemisphere', 'Right Hemisphere')):
+            ax_tc.plot(stc.times * 1000, _hemi_tc(stc, _hl), lw=1.5, color='steelblue')
+            ax_tc.axhline(0, color='k', lw=0.5)
+            ax_tc.axvline(0, color='k', lw=0.5, ls='--')
+            ax_tc.set_xlabel('Time (ms)')
+            ax_tc.set_ylabel(f'Source amplitude ({method})')
+            ax_tc.set_title(_htitle)
+            ax_tc.grid(True, alpha=0.3)
         plt.tight_layout()
-        fig_path = os.path.join('out_figs', f'source_time_course_{_hl}.png')
+        fig_path = os.path.join('out_figs', f'source_time_course_{label}.png')
         fig_tc.savefig(fig_path, dpi=72, bbox_inches='tight')
         plt.close(fig_tc)
-        add_image_to_product(report_items, f'Source Time Course {_hl.upper()}', filepath=fig_path)
+        tc_fig_paths[label] = fig_path
+    # product.json thumbnail — use grand avg if multiple conditions, else the single one
+    if len(stc_list) > 1:
+        fig_ga, axes_ga = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
+        fig_ga.suptitle(f'Source Time Course — Grand Average  ({method})', fontsize=10)
+        for ax_tc, _hl, _htitle in zip(axes_ga, ('lh', 'rh'),
+                                       ('Left Hemisphere', 'Right Hemisphere')):
+            ax_tc.plot(stc_ga.times * 1000, _hemi_tc(stc_ga, _hl), lw=2, color='black')
+            ax_tc.axhline(0, color='k', lw=0.5)
+            ax_tc.axvline(0, color='k', lw=0.5, ls='--')
+            ax_tc.set_xlabel('Time (ms)')
+            ax_tc.set_ylabel(f'Source amplitude ({method})')
+            ax_tc.set_title(_htitle)
+            ax_tc.grid(True, alpha=0.3)
+        plt.tight_layout()
+        ga_tc_path = os.path.join('out_figs', 'source_time_course_grandavg.png')
+        fig_ga.savefig(ga_tc_path, dpi=72, bbox_inches='tight')
+        plt.close(fig_ga)
+        add_image_to_product(report_items, 'Source Time Course (grand avg)', filepath=ga_tc_path)
+    else:
+        add_image_to_product(report_items, 'Source Time Course',
+                             filepath=next(iter(tc_fig_paths.values())))
 except Exception as e:
     add_info_to_product(report_items, f"Could not plot source time course: {e}", "warning")
 
@@ -410,21 +428,23 @@ if subject and subjects_dir:
 
 # == SAVE REPORT ==
 report = mne.Report(title='Source Estimate Report')
-for fpath, title in [
-    (os.path.join('out_figs', 'evoked_butterfly.png'),       'Evoked Response (grand avg)'),
-    (os.path.join('out_figs', 'source_time_course_lh.png'),  f'Source Time Course LH ({method})'),
-    (os.path.join('out_figs', 'source_time_course_rh.png'),  f'Source Time Course RH ({method})'),
-]:
-    if os.path.isfile(fpath):
-        report.add_image(fpath, title=title)
-if subject and subjects_dir:
-    for label, stc, _ in stc_list:
+
+_butterfly = os.path.join('out_figs', 'evoked_butterfly.png')
+if os.path.isfile(_butterfly):
+    report.add_image(_butterfly, title='Evoked Response (grand avg)')
+
+for label, stc, _ in stc_list:
+    tc_path = tc_fig_paths.get(label)
+    if tc_path and os.path.isfile(tc_path):
+        report.add_image(tc_path, title=f'Source Time Course — {label}')
+    if subject and subjects_dir:
         try:
             report.add_stc(stc, title=f'STC {label} ({method})',
                            subject=subject, subjects_dir=subjects_dir,
                            n_time_points=20, stc_plot_kwargs=dict(time_viewer=False))
         except Exception as e:
             add_info_to_product(report_items, f"Could not add STC [{label}] to report: {e}", "warning")
+
 report.save(os.path.join('out_report', 'report.html'), overwrite=True)
 
 add_info_to_product(
