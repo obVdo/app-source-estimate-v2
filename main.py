@@ -227,6 +227,7 @@ for ev in evoked_list:
 
 # == QC FIGURES ==
 import numpy as np
+import matplotlib.image as mpimg
 
 # Grand average STC across all conditions — used for butterfly, peak, brain plot
 _, stc_ref, ev_ref = stc_list[0]
@@ -250,27 +251,33 @@ try:
 except Exception as e:
     add_info_to_product(report_items, f"Could not plot evoked: {e}", "warning")
 
-# Source time course — all conditions overlaid
+# Source time course — LH and RH separately, all conditions overlaid
+def _hemi_tc(stc, hemi):
+    n_lh = len(stc.vertices[0])
+    return stc.data[:n_lh].mean(axis=0) if hemi == 'lh' else stc.data[n_lh:].mean(axis=0)
+
 try:
-    fig_stc, ax = plt.subplots(figsize=(10, 4))
-    colors = plt.cm.tab20.colors
-    for i, (label, stc, _) in enumerate(stc_list):
-        t_ms    = stc.times * 1000
-        mean_tc = stc.data.mean(axis=0)
-        ax.plot(t_ms, mean_tc, lw=1.5, color=colors[i % len(colors)], label=label)
-    if len(stc_list) > 1:
-        ax.plot(stc_ga.times * 1000, stc_ga.data.mean(axis=0),
-                lw=2.5, color='black', label='grand avg')
-    ax.set_xlabel('Time (ms)')
-    ax.set_ylabel(f'Source amplitude ({method})')
-    ax.set_title(f'Source Time Course — {method}  ({len(stc_list)} condition(s))')
-    ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=7, ncol=4)
-    plt.tight_layout()
-    fig_path = os.path.join('out_figs', 'source_time_course.png')
-    fig_stc.savefig(fig_path, dpi=72, bbox_inches='tight')
-    plt.close(fig_stc)
-    add_image_to_product(report_items, 'Source Time Course', filepath=fig_path)
+    _colors = plt.cm.tab20.colors
+    for _hl in ('lh', 'rh'):
+        fig_tc, ax_tc = plt.subplots(figsize=(10, 4))
+        for i, (label, stc, _) in enumerate(stc_list):
+            ax_tc.plot(stc.times * 1000, _hemi_tc(stc, _hl),
+                       lw=1.5, color=_colors[i % len(_colors)], label=label)
+        if len(stc_list) > 1:
+            ax_tc.plot(stc_ga.times * 1000, _hemi_tc(stc_ga, _hl),
+                       lw=2.5, color='black', label='grand avg')
+        ax_tc.axhline(0, color='k', lw=0.5)
+        ax_tc.axvline(0, color='k', lw=0.5, ls='--')
+        ax_tc.set_xlabel('Time (ms)')
+        ax_tc.set_ylabel(f'Source amplitude ({method})')
+        ax_tc.set_title(f'Source Time Course {_hl.upper()} — {method}  ({len(stc_list)} condition(s))')
+        ax_tc.grid(True, alpha=0.3)
+        ax_tc.legend(fontsize=7, ncol=4)
+        plt.tight_layout()
+        fig_path = os.path.join('out_figs', f'source_time_course_{_hl}.png')
+        fig_tc.savefig(fig_path, dpi=72, bbox_inches='tight')
+        plt.close(fig_tc)
+        add_image_to_product(report_items, f'Source Time Course {_hl.upper()}', filepath=fig_path)
 except Exception as e:
     add_info_to_product(report_items, f"Could not plot source time course: {e}", "warning")
 
@@ -286,10 +293,9 @@ try:
 except Exception as e:
     add_info_to_product(report_items, f"Could not get peak: {e}", "warning")
 
-# Brain surface plot — grand average STC
+# Brain surface filmstrip — grand average STC at multiple timepoints
 if subject and subjects_dir:
     try:
-        import numpy as np
         from qtpy.QtWidgets import QApplication
         _qapp = QApplication.instance() or QApplication(sys.argv)
 
@@ -333,36 +339,68 @@ if subject and subjects_dir:
 
         renderer_mod.backend._Renderer = _OffscreenRenderer
 
+        # 6 evenly-spaced timepoints from 0 ms to epoch end
+        _t_pos  = stc_ga.times[stc_ga.times >= 0]
+        _n_snap = min(6, len(_t_pos))
+        _snap_t = _t_pos[np.round(np.linspace(0, len(_t_pos) - 1, _n_snap)).astype(int)]
+
         for _hemi in ('lh', 'rh'):
-            _vert, _tmax = stc_ga.get_peak(hemi=_hemi, tmin=0)
+            _vert, _tpeak = stc_ga.get_peak(hemi=_hemi, tmin=0)
             brain = stc_ga.plot(
                 hemi=_hemi, subjects_dir=subjects_dir,
-                views=['lateral', 'medial'], initial_time=_tmax,
-                time_unit='s', size=(800, 400), smoothing_steps=10,
+                views='lateral', initial_time=_snap_t[0],
+                time_unit='s', size=400, smoothing_steps=10,
                 background='white', colormap='hot', time_viewer=False,
             )
             brain.add_foci(_vert, coords_as_verts=True, hemi=_hemi,
                            color='blue', scale_factor=0.6, alpha=0.5)
-            brain.add_text(0.1, 0.9,
-                           f'{method} ({_hemi}) — peak at {_tmax * 1000:.0f} ms',
-                           'title', font_size=10)
-            _fig_path = os.path.join('out_figs', f'brain_{_hemi}.png')
-            brain.save_image(_fig_path)
+
+            _frame_paths  = []
+            _frame_labels = []
+            for _t in _snap_t:
+                try:
+                    brain.set_time(_t)
+                except Exception:
+                    pass
+                _tmp = os.path.join('out_figs', f'_tmp_{_hemi}_{int(_t * 1000):04d}.png')
+                brain.save_image(_tmp)
+                _frame_paths.append(_tmp)
+                _frame_labels.append(f'{_t * 1000:.0f} ms')
             try:
                 brain.close()
             except Exception:
                 pass
+
+            _n_f = len(_frame_paths)
+            fig_s, axes_s = plt.subplots(1, _n_f, figsize=(3.5 * _n_f, 3))
+            if _n_f == 1:
+                axes_s = [axes_s]
+            for ax_s, _fp, _fl in zip(axes_s, _frame_paths, _frame_labels):
+                ax_s.imshow(mpimg.imread(_fp))
+                ax_s.set_title(_fl, fontsize=9)
+                ax_s.axis('off')
+                try:
+                    os.remove(_fp)
+                except Exception:
+                    pass
+            fig_s.suptitle(f'{method} ({_hemi.upper()}) — blue dot = peak vertex  '
+                           f'[peak at {_tpeak * 1000:.0f} ms]', fontsize=10)
+            plt.tight_layout()
+            strip_path = os.path.join('out_figs', f'brain_{_hemi}.png')
+            fig_s.savefig(strip_path, dpi=120, bbox_inches='tight')
+            plt.close(fig_s)
             add_image_to_product(report_items,
-                                 f'Brain {_hemi} (peak at {_tmax * 1000:.0f} ms)',
-                                 filepath=_fig_path)
+                                 f'Brain {_hemi.upper()} filmstrip',
+                                 filepath=strip_path)
     except Exception as e:
         add_info_to_product(report_items, f"Could not render brain surface plot: {e}", "warning")
 
 # == SAVE REPORT ==
 report = mne.Report(title='Source Estimate Report')
 for fpath, title in [
-    (os.path.join('out_figs', 'evoked_butterfly.png'),   'Evoked Response (grand avg)'),
-    (os.path.join('out_figs', 'source_time_course.png'),  f'Source Time Course ({method})'),
+    (os.path.join('out_figs', 'evoked_butterfly.png'),       'Evoked Response (grand avg)'),
+    (os.path.join('out_figs', 'source_time_course_lh.png'),  f'Source Time Course LH ({method})'),
+    (os.path.join('out_figs', 'source_time_course_rh.png'),  f'Source Time Course RH ({method})'),
 ]:
     if os.path.isfile(fpath):
         report.add_image(fpath, title=title)
