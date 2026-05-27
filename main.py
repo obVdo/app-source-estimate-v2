@@ -179,6 +179,17 @@ if fs_path and os.path.isdir(fs_path):
                 subjects_dir = subjects_dir or fs_path
                 subject      = subject or _subdirs[0]
 
+# If no FreeSurfer dir was provided, fall back to built-in fsaverage for plots/morph.
+if subjects_dir is None:
+    _fsa_path = str(mne.datasets.fetch_fsaverage(verbose=False))
+    subjects_dir = os.path.dirname(_fsa_path)
+    subject      = 'fsaverage'
+    add_info_to_product(report_items,
+                        "No FreeSurfer dir provided — using built-in fsaverage for plots.", "info")
+else:
+    add_info_to_product(report_items,
+                        f"Using FreeSurfer subject '{subject}' from {subjects_dir}.", "info")
+
 morph_to_fsaverage = config.get('morph_to_fsaverage', False)
 morph = None   # computed once from first STC, reused for all conditions
 
